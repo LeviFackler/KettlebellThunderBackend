@@ -98,10 +98,44 @@ def add_snatch_workout():
 @app.route('/api/snatch_workouts', methods=['GET'])
 def get_all_snatch_workouts():
     try:
-        workouts = SnatchWorkout.query.order_by(SnatchWorkout.workout_date.desc()).all()
-        return jsonify([workout.to_dict() for workout in workouts]), 200
+        # Fetch workouts ordered by date ascending to make comparison easier
+        workouts_query = SnatchWorkout.query.order_by(SnatchWorkout.workout_date.asc()).all()
+        
+        processed_workouts = []
+        # Dictionary to keep track of the last total_weight_moved for each kettlebell weight
+        # Key: kettlebell_weight_kg, Value: last total_weight_moved_kg
+        last_total_weight_moved_by_kb = {}
+
+        for workout in workouts_query:
+            workout_dict = workout.to_dict() # Get the basic dictionary representation
+            percentage_change = None # Default to None
+
+            current_kb_weight = workout.kettlebell_weight_kg
+            current_total_weight_moved = workout.total_weight_moved_kg
+
+            if current_kb_weight in last_total_weight_moved_by_kb:
+                previous_total_weight_moved = last_total_weight_moved_by_kb[current_kb_weight]
+                if previous_total_weight_moved is not None and previous_total_weight_moved > 0: # Avoid division by zero or if previous was None
+                    change = current_total_weight_moved - previous_total_weight_moved
+                    percentage_change = (change / previous_total_weight_moved) * 100
+                    percentage_change = round(percentage_change, 2) # Round to 2 decimal places
+            
+            workout_dict['percentage_change_from_previous_same_weight'] = percentage_change
+            
+            # Update the last known total weight moved for this kettlebell weight
+            last_total_weight_moved_by_kb[current_kb_weight] = current_total_weight_moved
+            
+            processed_workouts.append(workout_dict)
+
+        # Optional: Re-sort by date descending for the API response (common for display)
+        processed_workouts.sort(key=lambda w: w['workout_date'], reverse=True)
+            
+        return jsonify(processed_workouts), 200
     except Exception as e:
+        # Log the exception for debugging on the server
+        app.logger.error(f"Error in get_all_snatch_workouts: {str(e)}") 
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
