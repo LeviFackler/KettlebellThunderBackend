@@ -160,6 +160,52 @@ def get_all_snatch_workouts():
         # Log the exception for debugging on the server
         app.logger.error(f"Error in get_all_snatch_workouts: {str(e)}") 
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+    
+# --- NEW AUTHENTICATION ROUTES ---
+
+@app.route('/api/auth/register', methods=['POST'])
+def register_user():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No input data provided"}), 400
+
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+
+    if not username or not email or not password:
+        return jsonify({"error": "Missing username, email, or password"}), 400
+
+    # Check if username already exists
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "Username already exists"}), 409 # 409 Conflict
+
+    # Check if email already exists
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "Email address already registered"}), 409 # 409 Conflict
+
+    # Create new user
+    new_user = User(username=username, email=email)
+    new_user.set_password(password) # Hashes the password
+
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        # Return some user info (but NOT the password hash)
+        return jsonify({
+            "message": "User registered successfully!",
+            "user": {
+                "id": new_user.id,
+                "username": new_user.username,
+                "email": new_user.email
+            }
+        }), 201 # 201 Created
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error during registration: {str(e)}") # Log the error server-side
+        return jsonify({"error": "Registration failed due to an internal error"}), 500
+
 
 
 if __name__ == '__main__':
