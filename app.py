@@ -1,8 +1,9 @@
 import os
+import jwt
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask_bcrypt import Bcrypt
 
 #Get the base directory of the app
@@ -10,6 +11,17 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 # Create an instance of the Flask class
 app = Flask(__name__)
+
+# --- Ensure SECRET_KEY is set robustly ---
+# If you haven't already, set a strong secret key.
+# You can generate one using: import os; os.urandom(24)
+# It's best to set this from an environment variable in production.
+if not app.config.get("SECRET_KEY"):
+    app.config["SECRET_KEY"] = "your_super_secret_and_random_key_for_development" # CHANGE THIS FOR PRODUCTION
+    print("WARNING: Using default SECRET_KEY. Please set a strong SECRET_KEY in your config or environment.")
+
+app.config["JWT_EXPIRATION_DELTA"] = timedelta(hours=1) # Token expires in 1 hour (adjust as needed)
+
 
 # Database Configuration
 
@@ -205,6 +217,49 @@ def register_user():
         db.session.rollback()
         app.logger.error(f"Error during registration: {str(e)}") # Log the error server-side
         return jsonify({"error": "Registration failed due to an internal error"}), 500
+
+# --- LOGIN ROUTE ---
+
+@app.route('/api/auth/login', methods=['POST'])
+def login_user():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No input data provided"}), 400
+
+    # Allow login with either username or email
+    identifier = data.get('identifier') # Can be username or email
+    password = data.get('password')
+
+    if not identifier or not password:
+        return jsonify({"error": "Missing identifier (username/email) or password"}), 400
+
+    # Try to find user by email first, then by username
+    user = User.query.filter_by(email=identifier).first()
+    if not user:
+        user = User.query.filter_by(username=identifier).first()
+
+    if user and user.check_password(password):
+        # Credentials are valid, generate JWT
+        try:
+            payload = {
+                'exp': datetime.now(timezone.utc) + app.config["JWT_EXPIRATION_DELTA"], # Expiration time
+                'iat': datetime.now(timezone.utc), # Issued at time
+                'sub': user.id # Subject of the token (user ID)
+            }
+            token = jwt.encode(
+                payload,
+                app.config["SECRET_KEY"],
+                algorithm="HS256" # Standard algorithm for symmetric keys
+            )
+            return jsonify({"message": "Login successful!", "access_token": token}), 200
+        except Exception as e:
+            app.logger.error(f"Error generating token: {str(e)}")
+            return jsonify({"error": "Token generation failed"}), 500
+    else:
+        # Invalid credentials
+        return jsonify({"error": "Invalid username/email or password"}), 401 # 401 Unauthorized
+
 
 
 
