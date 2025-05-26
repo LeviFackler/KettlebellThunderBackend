@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import datetime
+from flask_bcrypt import Bcrypt
 
 #Get the base directory of the app
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -18,8 +19,29 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # --- Initialize Extentions ---
 db = SQLAlchemy(app) # Initialize SQLAlchemy with our app
 migrate = Migrate(app, db) #Initialize Flask-Migrate with our app and database
+bcrypt = Bcrypt(app)
 
 # --- MODELS ---
+
+class User(db.Model): # <<< NEW MODEL
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False) # Increased length for bcrypt hash
+    # Relationship to SnatchWorkout (will be defined later when we link them)
+    # workouts = db.relationship('SnatchWorkout', backref='author', lazy=True) # Example for later
+
+    def set_password(self, password): # <<< NEW METHOD
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    def check_password(self, password): # <<< NEW METHOD
+        return bcrypt.check_password_hash(self.password_hash, password)
+
+
+    def __repr__(self):
+        return f'<User {self.username}>'
+
+
 class SnatchWorkout(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     workout_date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
@@ -27,6 +49,9 @@ class SnatchWorkout(db.Model):
     kettlebell_weight_kg = db.Column(db.Float, nullable=False) # Assuming weight in KG
     total_snatches = db.Column(db.Integer, nullable=False)
     total_weight_moved_kg = db.Column(db.Float, nullable=False) # Calculated field
+    # user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # Will add this later in step 1.6
+    # reps_per_interval = db.Column(db.Integer, nullable=True) # Will add this later in step 1.6
+
 
     def __init__(self, workout_date, duration_minutes, kettlebell_weight_kg, total_snatches):
         self.workout_date = workout_date
