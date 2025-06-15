@@ -40,8 +40,7 @@ class User(db.Model): # <<< NEW MODEL
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False) # Increased length for bcrypt hash
-    # Relationship to SnatchWorkout (will be defined later when we link them)
-    # workouts = db.relationship('SnatchWorkout', backref='author', lazy=True) # Example for later
+    workouts = db.relationship('SnatchWorkout', backref='user', lazy=True)
 
     def set_password(self, password): # <<< NEW METHOD
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -61,11 +60,12 @@ class SnatchWorkout(db.Model):
     kettlebell_weight_kg = db.Column(db.Float, nullable=False) # Assuming weight in KG
     total_snatches = db.Column(db.Integer, nullable=False)
     total_weight_moved_kg = db.Column(db.Float, nullable=False) # Calculated field
-    # user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # Will add this later in step 1.6
-    # reps_per_interval = db.Column(db.Integer, nullable=True) # Will add this later in step 1.6
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reps_per_interval = db.Column(db.Integer, nullable=False)
 
 
-    def __init__(self, workout_date, duration_minutes, kettlebell_weight_kg, total_snatches):
+    def __init__(self, reps_per_interval, workout_date, duration_minutes, kettlebell_weight_kg, total_snatches):
+        self.reps_per_interval = reps_per_interval
         self.workout_date = workout_date
         self.duration_minutes = duration_minutes
         self.kettlebell_weight_kg = kettlebell_weight_kg
@@ -84,7 +84,9 @@ class SnatchWorkout(db.Model):
             'duration_minutes': self.duration_minutes,
             'kettlebell_weight_kg': self.kettlebell_weight_kg,
             'total_snatches': self.total_snatches,
-            'total_weight_moved_kg': self.total_weight_moved_kg
+            'total_weight_moved_kg': self.total_weight_moved_kg,
+            'reps_per_interval': self.reps_per_interval,
+            'user_id': self.user_id
         }
 
 # --- ROUTES ---
@@ -173,7 +175,7 @@ def get_all_snatch_workouts():
         app.logger.error(f"Error in get_all_snatch_workouts: {str(e)}") 
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
     
-# --- NEW AUTHENTICATION ROUTES ---
+# --- AUTHENTICATION ROUTES ---
 
 @app.route('/api/auth/register', methods=['POST'])
 def register_user():
